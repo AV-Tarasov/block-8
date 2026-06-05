@@ -1,0 +1,2 @@
+{"event":"task.status_changed","task":{"id":4,"title":"Implement auth","status":"done"},"old_status":"new","new_status":"done","occurred_at":"2026-05-30T15:36:54.750640Z"}
+{"event":"task.status_changed","task":{"id":5,"title":"Implement auth","status":"done"},"old_status":"new","new_status":"done","occurred_at":"2026-05-30T15:39:16.686424Z"}

@@ -1,0 +1,284 @@
+openapi: 3.0.0
+
+info:
+  title: Task Manager API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api
+
+security:
+  - sanctum: []
+
+paths:
+
+  /user:
+    get:
+      summary: Get authenticated user
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: OK
+
+  /projects:
+    get:
+      summary: List projects
+      responses:
+        '200':
+          description: OK
+
+    post:
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created
+
+  /projects/{project}:
+    parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Show project
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+
+    put:
+      summary: Update project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+
+    delete:
+      summary: Delete project
+      responses:
+        '204':
+          description: Deleted
+
+  /projects/{project}/tasks:
+    parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: List tasks of project
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+
+        - name: priority
+          in: query
+          schema:
+            type: string
+
+        - name: search
+          in: query
+          schema:
+            type: string
+
+        - name: due_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+
+        - name: due_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+
+      responses:
+        '200':
+          description: OK
+
+    post:
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                priority:
+                  type: string
+                due_date:
+                  type: string
+                  format: date
+      responses:
+        '201':
+          description: Created
+
+  /tasks/{task}:
+    parameters:
+      - name: task
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    patch:
+      summary: Update task (status, priority, etc)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                priority:
+                  type: string
+                due_date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Updated
+
+  /tasks/{task}/comments:
+    parameters:
+      - name: task
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: List comments
+      responses:
+        '200':
+          description: OK
+
+    post:
+      summary: Create comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+      responses:
+        '201':
+          description: Created
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /ready:
+    get:
+      summary: Readiness check (DB + Redis)
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Not ready
+
+  /metrics:
+    get:
+      summary: System metrics
+      responses:
+        '200':
+          description: Metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users_total:
+                    type: integer
+                  projects_total:
+                    type: integer
+                  tasks_total:
+                    type: integer
+                  comments_total:
+                    type: integer
+                  memory_usage_mb:
+                    type: number
+
+  /webhooks:
+    post:
+      summary: Register webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, secret]
+              properties:
+                url:
+                  type: string
+                secret:
+                  type: string
+                enabled:
+                  type: boolean
+      responses:
+        '201':
+          description: Created
+
+components:
+  securitySchemes:
+    sanctum:
+      type: http
+      scheme: bearer

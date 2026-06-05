@@ -1,0 +1,55 @@
+services:
+
+    app:
+        build:
+            context: .
+
+        container_name: task-manager-app
+
+        working_dir: /var/www
+
+        volumes:
+            - ./:/var/www
+
+        ports:
+            - "8000:8000"
+
+        command: php artisan serve --host=0.0.0.0 --port=8000
+
+        depends_on:
+            - postgres
+            - redis
+
+    webhook-receiver:
+        image: php:8.4-cli
+
+        working_dir: /app
+
+        volumes:
+            - ./webhook-receiver:/app
+
+        command: php -S 0.0.0.0:9000
+
+        ports:
+            - "9000:9000"
+
+    postgres:
+        image: postgres:17
+
+        container_name: task-manager-postgres
+
+        environment:
+            POSTGRES_DB: task_manager
+            POSTGRES_USER: laravel
+            POSTGRES_PASSWORD: secret
+
+        ports:
+            - "5432:5432"
+
+    redis:
+        image: redis:7
+
+        container_name: task-manager-redis
+
+        ports:
+            - "6379:6379"
