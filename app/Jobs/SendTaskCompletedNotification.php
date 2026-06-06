@@ -25,12 +25,17 @@ class SendTaskCompletedNotification implements ShouldQueue
 
     public function handle(): void
     {
-        SentNotification::query()->insertOrIgnore([
-            'task_id' => $this->task->id,
-            'type' => 'task_completed',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $inserted = SentNotification::query()
+            ->insertOrIgnore([
+                'task_id' => $this->task->id,
+                'type' => 'task_completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        if (!$inserted) {
+            return;
+        }
 
         File::append(
             storage_path('logs/notifications.log'),

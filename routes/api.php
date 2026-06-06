@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Models\Comment;
@@ -25,13 +27,12 @@ Route::get('/health', function () {
 Route::get('/ready', function () {
 
     try {
-
         DB::select('SELECT 1');
-
         Redis::ping();
-
         return response()->json([
             'status' => 'ready',
+            'database' => 'ok',
+            'redis' => 'ok',
         ]);
 
     } catch (\Throwable $e) {
@@ -46,16 +47,24 @@ Route::get('/ready', function () {
 Route::get('/metrics', function () {
 
     return response()->json([
-        'users_total' => User::count(),
-        'projects_total' => Project::count(),
-        'tasks_total' => Task::count(),
-        'comments_total' => Comment::count(),
-        'memory_usage_mb' => round(
-            memory_get_usage(true) / 1024 / 1024,
-            2
-        ),
+        'application' => [
+            'name' => config('app.name'),
+            'environment' => config('app.env'),
+        ],
+        'database' => [
+            'driver' => config('database.default'),
+        ],
+        'queue' => [
+            'driver' => config('queue.default'),
+        ],
+        'system' => [
+            'php_version' => PHP_VERSION,
+            'timestamp' => now()->toISOString(),
+        ],
     ]);
 });
+
+Route::post('/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -73,4 +82,13 @@ Route::middleware('auth:sanctum')->group(function () {
         'tasks.comments',
         CommentController::class
     );
+
+    Route::apiResource(
+        'projects.webhooks',
+        WebhookController::class
+    )->only([
+        'index',
+        'store',
+        'destroy',
+    ]);
 });
