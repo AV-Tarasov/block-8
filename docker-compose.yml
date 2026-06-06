@@ -33,6 +33,25 @@ services:
         ports:
             - "9000:9000"
 
+    queue:
+        build:
+            context: .
+
+        container_name: task-manager-queue
+
+        working_dir: /var/www
+
+        volumes:
+            - ./:/var/www
+
+        command: php artisan queue:work redis --tries=3 --sleep=3
+
+        depends_on:
+            - postgres
+            - redis
+
+        restart: unless-stopped
+
     postgres:
         image: postgres:17
 

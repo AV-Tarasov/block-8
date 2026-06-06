@@ -55,6 +55,8 @@ class TaskController extends Controller
 
     public function show(Project $project, Task $task)
     {
+        $this->authorize('view', $task);
+
         return new TaskResource($task);
     }
 
@@ -64,6 +66,8 @@ class TaskController extends Controller
 
     public function update(UpdateTaskRequest $request, Project $project, Task $task)
     {
+        $this->authorize('update', $task);
+
         $oldStatus = $task->status;
 
         $task->update($request->validated());
@@ -83,6 +87,7 @@ class TaskController extends Controller
 
     public function destroy(Project $project, Task $task)
     {
+        $this->authorize('delete', $task);
         $task->delete();
         return response()->noContent();
     }
