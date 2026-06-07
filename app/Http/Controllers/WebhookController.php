@@ -11,6 +11,8 @@ class WebhookController extends Controller
 {
     public function index(Project $project)
     {
+        $this->authorize('update', $project);
+
         return WebhookResource::collection(
             $project->webhooks()->paginate(10)
         );
@@ -18,6 +20,8 @@ class WebhookController extends Controller
 
     public function store(StoreWebhookRequest $request, Project $project)
     {
+        $this->authorize('update', $project);
+
         $webhook = $project->webhooks()->create(
             $request->validated()
         );

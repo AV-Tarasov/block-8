@@ -74,12 +74,16 @@ class WebhookTest extends TestCase
 
         $webhook = Webhook::factory()->create();
 
-        $this->expectException(\Exception::class);
+        try {
+            (new SendWebhookJob(
+                $webhook,
+                ['event' => 'test']
+            ))->handle();
 
-        (new SendWebhookJob(
-            $webhook,
-            ['event' => 'test']
-        ))->handle();
+            $this->fail('Webhook failure did not throw an exception.');
+        } catch (\Exception $exception) {
+            $this->assertSame('Webhook failed', $exception->getMessage());
+        }
 
         $this->assertDatabaseHas('webhook_attempts', [
             'webhook_id' => $webhook->id,

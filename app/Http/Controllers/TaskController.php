@@ -17,6 +17,8 @@ class TaskController extends Controller
 
     public function index(Request $request, Project $project)
     {
+        $this->authorize('view', $project);
+
         $tasks = $project->tasks()
             ->when($request->status, function ($query, $status) {
                 $query->where('status', $status);
@@ -25,7 +27,10 @@ class TaskController extends Controller
                 $query->where('priority', $priority);
             })
             ->when($request->search, function ($query, $search) {
-                $query->where('title', 'ILIKE', "%{$search}%");
+                $query->whereRaw(
+                    'LOWER(title) LIKE ?',
+                    ['%' . strtolower($search) . '%']
+                );
             })
             ->when($request->due_date_from, function ($query, $date) {
                 $query->whereDate('due_date', '>=', $date);
@@ -45,16 +50,23 @@ class TaskController extends Controller
 
     public function store(StoreTaskRequest $request, Project $project)
     {
+        $this->authorize('update', $project);
+
         $task = $project->tasks()->create(
             $request->validated()
         );
 
         event(new TaskCreated($task));
 
-        return new TaskResource($task);    }
+        return (new TaskResource($task))
+            ->response()
+            ->setStatusCode(201);
+    }
 
     public function show(Project $project, Task $task)
     {
+        abort_unless($task->project_id === $project->id, 404);
+
         $this->authorize('view', $task);
 
         return new TaskResource($task);
@@ -66,6 +78,8 @@ class TaskController extends Controller
 
     public function update(UpdateTaskRequest $request, Project $project, Task $task)
     {
+        abort_unless($task->project_id === $project->id, 404);
+
         $this->authorize('update', $task);
 
         $oldStatus = $task->status;
@@ -87,6 +101,8 @@ class TaskController extends Controller
 
     public function destroy(Project $project, Task $task)
     {
+        abort_unless($task->project_id === $project->id, 404);
+
         $this->authorize('delete', $task);
         $task->delete();
         return response()->noContent();

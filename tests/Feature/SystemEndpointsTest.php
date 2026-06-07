@@ -3,10 +3,14 @@
 namespace Tests\Feature;
 
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 class SystemEndpointsTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_health_endpoint_returns_ok(): void
     {
         $this->getJson('/api/health')
@@ -18,6 +22,10 @@ class SystemEndpointsTest extends TestCase
 
     public function test_ready_endpoint_returns_ready(): void
     {
+        Redis::shouldReceive('ping')
+            ->once()
+            ->andReturn('PONG');
+
         $this->getJson('/api/ready')
             ->assertOk()
             ->assertJson([

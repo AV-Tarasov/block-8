@@ -9,23 +9,20 @@ class TaskPolicy
 {
     public function view(User $user, Task $task): bool
     {
-        return $task->project
-            ->members()
-            ->whereKey($user->id)
-            ->exists();
+        return
+            $task->project->owner_id === $user->id
+            ||
+            $task->project
+                ->members()
+                ->whereKey($user->id)
+                ->exists();
     }
     public function update(User $user, Task $task): bool
     {
-        return $task->project
-            ->members()
-            ->whereKey($user->id)
-            ->exists();
+        return $task->project->owner_id === $user->id;
     }
     public function delete(User $user, Task $task): bool
     {
-        return $task->project
-            ->members()
-            ->whereKey($user->id)
-            ->exists();
+        return $task->project->owner_id === $user->id;
     }
 }

@@ -43,7 +43,9 @@ class TaskAuditTest extends TestCase
         $user = User::factory()->create();
         Sanctum::actingAs($user);
 
-        $project = Project::factory()->create();
+        $project = Project::factory()->create([
+            'owner_id' => $user->id,
+        ]);
 
         $task = Task::factory()->create([
             'project_id' => $project->id,

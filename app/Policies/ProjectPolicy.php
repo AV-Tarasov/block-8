@@ -8,7 +8,6 @@ use Illuminate\Auth\Access\Response;
 
 class ProjectPolicy
 {
-
     public function viewAny(User $user): bool
     {
         return false;
@@ -24,7 +23,7 @@ class ProjectPolicy
 
     public function create(User $user): bool
     {
-        return false;
+        return true;
     }
 
     public function update(User $user, Project $project): bool
