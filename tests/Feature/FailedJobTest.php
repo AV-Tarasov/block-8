@@ -2,28 +2,32 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Support\Facades\Bus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Tests\Support\FailingJob;
 use Tests\TestCase;
 
 
 class FailedJobTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_job_is_retried_and_fails(): void
     {
-        Bus::fake();
+        config(['queue.default' => 'database']);
 
-        Bus::assertNothingDispatched();
-
-        $job = new FailingJob();
+        FailingJob::dispatch();
 
         for ($i = 0; $i < 3; $i++) {
-            try {
-                $job->handle();
-            } catch (\Throwable $e) {
-            }
+            Artisan::call('queue:work', [
+                'connection' => 'database',
+                '--once' => true,
+                '--tries' => 3,
+            ]);
         }
 
-        $this->assertTrue(true);
+        $this->assertDatabaseHas('failed_jobs', [
+            'queue' => 'default',
+        ]);
     }
 }

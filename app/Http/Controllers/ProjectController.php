@@ -6,14 +6,22 @@ use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
-use Illuminate\Http\Request;
+
 
 class ProjectController extends Controller
 {
 
     public function index()
     {
-        $projects = Project::paginate(10);
+        $user = auth()->user();
+
+        $projects = Project::query()
+            ->where('owner_id', $user->id)
+            ->orWhereHas('members', function ($query) use ($user) {
+                $query->where('users.id', $user->id);
+            })
+            ->paginate(10);
+
         return ProjectResource::collection($projects);
     }
 

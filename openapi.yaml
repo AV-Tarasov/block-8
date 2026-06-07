@@ -4,8 +4,13 @@ info:
   title: Task Manager API
   version: 1.0.0
   description: |
-    Task management system with projects, tasks, comments, authentication,
-    webhooks, events, queue processing and audit logs.
+    REST API for projects, tasks, comments and webhook subscriptions.
+
+    Protected endpoints use Laravel Sanctum Bearer tokens.
+
+    Webhook deliveries include:
+    - `X-Signature`: HMAC-SHA256 signature of the JSON payload using the webhook `secret`.
+    - `Idempotency-Key`: deterministic key generated from the webhook id and payload.
 
 servers:
   - url: http://localhost:8000/api
@@ -13,10 +18,7 @@ servers:
 security:
   - sanctumAuth: []
 
-
 paths:
-
-
   /login:
     post:
       security: []
@@ -34,6 +36,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -42,7 +46,7 @@ paths:
       summary: Current authenticated user
       responses:
         "200":
-          description: User
+          description: Current user
           content:
             application/json:
               schema:
@@ -50,25 +54,36 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-
-
   /health:
     get:
       security: []
       summary: Health check
       responses:
         "200":
-          description: OK
+          description: Application is responding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
 
   /ready:
     get:
       security: []
-      summary: Readiness (DB + Redis)
+      summary: Readiness check
+      description: Checks database and Redis connectivity.
       responses:
         "200":
-          description: Ready
+          description: Dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
         "503":
-          description: Not ready
+          description: A dependency is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyErrorResponse"
 
   /metrics:
     get:
@@ -77,21 +92,24 @@ paths:
       responses:
         "200":
           description: Metrics
-
-
-
-  /projects:
-    get:
-      summary: List projects
-      responses:
-        "200":
-          description: List
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Project"
+                $ref: "#/components/schemas/MetricsResponse"
+
+  /projects:
+    get:
+      summary: List accessible projects
+      description: Returns projects owned by the user or shared with the user as a member.
+      responses:
+        "200":
+          description: Paginated project collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
     post:
       summary: Create project
@@ -103,18 +121,19 @@ paths:
               $ref: "#/components/schemas/ProjectCreateRequest"
       responses:
         "201":
-          description: Created
+          description: Project created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Project"
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationError"
 
   /projects/{project}:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
-
     get:
       summary: Get project
       responses:
@@ -123,12 +142,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Project"
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
     put:
       summary: Update project
+      description: Only the project owner can update a project.
       requestBody:
         required: true
         content:
@@ -137,48 +161,87 @@ paths:
               $ref: "#/components/schemas/ProjectUpdateRequest"
       responses:
         "200":
-          description: Updated
+          description: Project updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Project"
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+    patch:
+      summary: Update project
+      description: Only the project owner can update a project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdateRequest"
+      responses:
+        "200":
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
     delete:
       summary: Delete project
+      description: Only the project owner can delete a project.
       responses:
         "204":
-          description: Deleted
-
-
+          description: Project deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /projects/{project}/tasks:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
-
     get:
-      summary: List tasks
+      summary: List project tasks
+      description: Project owners and members can list tasks.
       parameters:
-        - in: query
-          name: status
-          schema: { type: string }
-        - in: query
-          name: priority
-          schema: { type: string }
-        - in: query
-          name: search
-          schema: { type: string }
+        - $ref: "#/components/parameters/TaskStatusFilter"
+        - $ref: "#/components/parameters/TaskPriorityFilter"
+        - $ref: "#/components/parameters/SearchFilter"
+        - $ref: "#/components/parameters/DueDateFromFilter"
+        - $ref: "#/components/parameters/DueDateToFilter"
       responses:
         "200":
-          description: Tasks
+          description: Cursor-paginated task collection
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Task"
+                $ref: "#/components/schemas/TaskCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     post:
       summary: Create task
+      description: Only the project owner can create tasks.
       requestBody:
         required: true
         content:
@@ -187,28 +250,43 @@ paths:
               $ref: "#/components/schemas/TaskCreateRequest"
       responses:
         "201":
-          description: Created task
+          description: Task created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Task"
+                $ref: "#/components/schemas/TaskResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /projects/{project}/tasks/{task}:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
       - $ref: "#/components/parameters/TaskId"
-
     get:
       summary: Get task
       responses:
         "200":
+          description: Task
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Task"
+                $ref: "#/components/schemas/TaskResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     put:
-      summary: Update task (status change triggers events)
+      summary: Update task
+      description: Only the project owner can update tasks. Status changes trigger events and audit logs.
       requestBody:
         required: true
         content:
@@ -217,38 +295,76 @@ paths:
               $ref: "#/components/schemas/TaskUpdateRequest"
       responses:
         "200":
+          description: Task updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Task"
+                $ref: "#/components/schemas/TaskResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+    patch:
+      summary: Update task
+      description: Only the project owner can update tasks. Status changes trigger events and audit logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdateRequest"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
     delete:
       summary: Delete task
+      description: Only the project owner can delete tasks.
       responses:
         "204":
-          description: Deleted
-
-
+          description: Task deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /tasks/{task}/comments:
     parameters:
       - $ref: "#/components/parameters/TaskId"
-
     get:
-      summary: List comments (paginated)
+      summary: List task comments
       responses:
         "200":
+          description: Paginated comment collection
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Comment"
-                  meta:
-                    type: object
+                $ref: "#/components/schemas/CommentCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     post:
       summary: Create comment
@@ -260,59 +376,123 @@ paths:
               $ref: "#/components/schemas/CommentCreateRequest"
       responses:
         "201":
+          description: Comment created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Comment"
+                $ref: "#/components/schemas/CommentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /tasks/{task}/comments/{comment}:
     parameters:
       - $ref: "#/components/parameters/TaskId"
       - $ref: "#/components/parameters/CommentId"
-
     get:
       summary: Get comment
       responses:
         "200":
+          description: Comment
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Comment"
+                $ref: "#/components/schemas/CommentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     put:
       summary: Update comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentUpdateRequest"
       responses:
         "200":
+          description: Comment updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Comment"
+                $ref: "#/components/schemas/CommentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+    patch:
+      summary: Update comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentUpdateRequest"
+      responses:
+        "200":
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
     delete:
       summary: Delete comment
       responses:
         "204":
-          description: Deleted
-
-
+          description: Comment deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /projects/{project}/webhooks:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
-
     get:
-      summary: List webhooks
+      summary: List project webhook subscriptions
+      description: Only the project owner can list webhook subscriptions.
       responses:
         "200":
+          description: Paginated webhook collection
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Webhook"
+                $ref: "#/components/schemas/WebhookCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     post:
       summary: Create webhook subscription
+      description: Only the project owner can create webhook subscriptions.
       requestBody:
         required: true
         content:
@@ -321,173 +501,549 @@ paths:
               $ref: "#/components/schemas/WebhookCreateRequest"
       responses:
         "201":
+          description: Webhook subscription created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Webhook"
+                $ref: "#/components/schemas/WebhookResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /projects/{project}/webhooks/{webhook}:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
       - $ref: "#/components/parameters/WebhookId"
-
     delete:
-      summary: Delete webhook
+      summary: Delete webhook subscription
+      description: Only the project owner can delete webhook subscriptions.
       responses:
         "204":
-          description: Deleted
-
-
+          description: Webhook subscription deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
-
   securitySchemes:
     sanctumAuth:
       type: http
       scheme: bearer
-
-
+      bearerFormat: Sanctum token
 
   parameters:
     ProjectId:
       name: project
       in: path
       required: true
-      schema: { type: integer }
-
+      schema:
+        type: integer
+        minimum: 1
     TaskId:
       name: task
       in: path
       required: true
-      schema: { type: integer }
-
+      schema:
+        type: integer
+        minimum: 1
     CommentId:
       name: comment
       in: path
       required: true
-      schema: { type: integer }
-
+      schema:
+        type: integer
+        minimum: 1
     WebhookId:
       name: webhook
       in: path
       required: true
-      schema: { type: integer }
-
-
+      schema:
+        type: integer
+        minimum: 1
+    TaskStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/TaskStatus"
+    TaskPriorityFilter:
+      name: priority
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/TaskPriority"
+    SearchFilter:
+      name: search
+      in: query
+      required: false
+      schema:
+        type: string
+    DueDateFromFilter:
+      name: due_date_from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    DueDateToFilter:
+      name: due_date_to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
 
   responses:
     Unauthorized:
-      description: Unauthorized
-
-    NotFound:
-      description: Not Found
-
-    ValidationError:
-      description: Validation error
+      description: Missing, invalid or expired Bearer token.
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              message:
-                type: string
-              errors:
-                type: object
-
-
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: Unauthenticated.
+    Forbidden:
+      description: Authenticated user is not allowed to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: This action is unauthorized.
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: Not Found
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
 
   schemas:
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+          example: The given data was invalid.
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    ResourceLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          nullable: true
+        last:
+          type: string
+          nullable: true
+        prev:
+          type: string
+          nullable: true
+        next:
+          type: string
+          nullable: true
+
+    ResourceMeta:
+      type: object
+      additionalProperties: true
+      properties:
+        current_page:
+          type: integer
+        from:
+          type: integer
+          nullable: true
+        last_page:
+          type: integer
+        path:
+          type: string
+        per_page:
+          type: integer
+        to:
+          type: integer
+          nullable: true
+        total:
+          type: integer
+        next_cursor:
+          type: string
+          nullable: true
+        prev_cursor:
+          type: string
+          nullable: true
 
     User:
       type: object
+      required: [id, name, email]
       properties:
-        id: { type: integer }
-        name: { type: string }
-        email: { type: string }
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
 
     Project:
       type: object
+      required: [id, name, owner_id, created_at]
       properties:
-        id: { type: integer }
-        name: { type: string }
-        owner_id: { type: integer }
+        id:
+          type: integer
+        name:
+          type: string
+        owner_id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
 
     Task:
       type: object
+      required: [id, project_id, title, status, priority, created_at]
       properties:
-        id: { type: integer }
-        project_id: { type: integer }
-        title: { type: string }
-        description: { type: string }
-        status: { type: string }
-        priority: { type: string }
-        due_date: { type: string, format: date-time }
+        id:
+          type: integer
+        project_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
 
     Comment:
       type: object
+      required: [id, task_id, user_id, body, created_at]
       properties:
-        id: { type: integer }
-        task_id: { type: integer }
-        user_id: { type: integer }
-        body: { type: string }
+        id:
+          type: integer
+        task_id:
+          type: integer
+        user_id:
+          type: integer
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     Webhook:
       type: object
+      required: [id, project_id, url, enabled, created_at]
       properties:
-        id: { type: integer }
-        project_id: { type: integer }
-        url: { type: string }
-        enabled: { type: boolean }
+        id:
+          type: integer
+        project_id:
+          type: integer
+        url:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    TaskStatus:
+      type: string
+      enum: [new, in_progress, blocked, done, cancelled]
+
+    TaskPriority:
+      type: string
+      enum: [low, normal, high, critical]
 
     LoginRequest:
       type: object
       required: [email, password]
       properties:
-        email: { type: string }
-        password: { type: string }
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
 
     TokenResponse:
       type: object
+      required: [token]
       properties:
-        token: { type: string }
+        token:
+          type: string
 
     ProjectCreateRequest:
       type: object
       required: [name]
       properties:
-        name: { type: string }
+        name:
+          type: string
+          maxLength: 255
 
     ProjectUpdateRequest:
       type: object
       properties:
-        name: { type: string }
+        name:
+          type: string
+          maxLength: 255
 
     TaskCreateRequest:
       type: object
-      required: [title]
+      required: [title, status, priority]
       properties:
-        title: { type: string }
-        description: { type: string }
-        status: { type: string }
-        priority: { type: string }
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
 
     TaskUpdateRequest:
       type: object
       properties:
-        title: { type: string }
-        status: { type: string }
-        priority: { type: string }
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
 
     CommentCreateRequest:
       type: object
       required: [body]
       properties:
-        body: { type: string }
+        body:
+          type: string
+
+    CommentUpdateRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
 
     WebhookCreateRequest:
       type: object
       required: [url, secret]
       properties:
-        url: { type: string }
-        secret: { type: string }
-        enabled: { type: boolean }
+        url:
+          type: string
+          format: uri
+        secret:
+          type: string
+          maxLength: 255
+        enabled:
+          type: boolean
+
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyResponse:
+      type: object
+      required: [status, database, redis]
+      properties:
+        status:
+          type: string
+          example: ready
+        database:
+          type: string
+          example: ok
+        redis:
+          type: string
+          example: ok
+
+    ReadyErrorResponse:
+      type: object
+      required: [status, error]
+      properties:
+        status:
+          type: string
+          example: not_ready
+        error:
+          type: string
+
+    MetricsResponse:
+      type: object
+      required:
+        - users_total
+        - projects_total
+        - tasks_total
+        - comments_total
+        - memory_usage_mb
+        - application
+        - database
+        - queue
+        - system
+      properties:
+        users_total:
+          type: integer
+        projects_total:
+          type: integer
+        tasks_total:
+          type: integer
+        comments_total:
+          type: integer
+        memory_usage_mb:
+          type: number
+        application:
+          type: object
+          properties:
+            name:
+              type: string
+            environment:
+              type: string
+        database:
+          type: object
+          properties:
+            driver:
+              type: string
+        queue:
+          type: object
+          properties:
+            driver:
+              type: string
+        system:
+          type: object
+          properties:
+            php_version:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+
+    ProjectResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Project"
+
+    TaskResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Task"
+
+    CommentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Comment"
+
+    WebhookResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Webhook"
+
+    ProjectCollection:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        links:
+          $ref: "#/components/schemas/ResourceLinks"
+        meta:
+          $ref: "#/components/schemas/ResourceMeta"
+
+    TaskCollection:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        links:
+          $ref: "#/components/schemas/ResourceLinks"
+        meta:
+          $ref: "#/components/schemas/ResourceMeta"
+
+    CommentCollection:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+        links:
+          $ref: "#/components/schemas/ResourceLinks"
+        meta:
+          $ref: "#/components/schemas/ResourceMeta"
+
+    WebhookCollection:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Webhook"
+        links:
+          $ref: "#/components/schemas/ResourceLinks"
+        meta:
+          $ref: "#/components/schemas/ResourceMeta"

@@ -59,6 +59,24 @@ class TaskApiTest extends TestCase
         $response->assertJsonCount(3, 'data');
     }
 
+    public function test_projects_list_excludes_inaccessible_projects(): void
+    {
+        $user = User::factory()->create();
+
+        Sanctum::actingAs($user);
+
+        Project::factory()->count(2)->create([
+            'owner_id' => $user->id,
+        ]);
+
+        Project::factory()->count(2)->create();
+
+        $response = $this->getJson('/api/projects');
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+    }
+
     public function test_project_can_be_viewed(): void
     {
         $user = User::factory()->create();
@@ -141,6 +159,74 @@ class TaskApiTest extends TestCase
         $this->assertDatabaseHas('tasks', [
             'title' => 'New Task',
         ]);
+    }
+
+    public function test_stranger_cannot_list_tasks_for_project(): void
+    {
+        $owner = User::factory()->create();
+        $stranger = User::factory()->create();
+
+        $project = Project::factory()->create([
+            'owner_id' => $owner->id,
+        ]);
+
+        Sanctum::actingAs($stranger);
+
+        $this->getJson("/api/projects/{$project->id}/tasks")
+            ->assertForbidden();
+    }
+
+    public function test_stranger_cannot_create_task_for_project(): void
+    {
+        $owner = User::factory()->create();
+        $stranger = User::factory()->create();
+
+        $project = Project::factory()->create([
+            'owner_id' => $owner->id,
+        ]);
+
+        Sanctum::actingAs($stranger);
+
+        $this->postJson("/api/projects/{$project->id}/tasks", [
+            'title' => 'Stranger task',
+            'status' => 'new',
+            'priority' => 'normal',
+        ])->assertForbidden();
+    }
+
+    public function test_member_can_list_tasks_but_cannot_change_them(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+
+        $project = Project::factory()->create([
+            'owner_id' => $owner->id,
+        ]);
+
+        $project->members()->attach($member->id);
+
+        $task = Task::factory()->create([
+            'project_id' => $project->id,
+            'status' => 'new',
+        ]);
+
+        Sanctum::actingAs($member);
+
+        $this->getJson("/api/projects/{$project->id}/tasks")
+            ->assertOk();
+
+        $this->postJson("/api/projects/{$project->id}/tasks", [
+            'title' => 'Member task',
+            'status' => 'new',
+            'priority' => 'normal',
+        ])->assertForbidden();
+
+        $this->patchJson("/api/projects/{$project->id}/tasks/{$task->id}", [
+            'status' => 'done',
+        ])->assertForbidden();
+
+        $this->deleteJson("/api/projects/{$project->id}/tasks/{$task->id}")
+            ->assertForbidden();
     }
 
     public function test_tasks_can_be_filtered_by_status(): void

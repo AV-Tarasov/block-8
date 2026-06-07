@@ -47,6 +47,11 @@ Route::get('/ready', function () {
 Route::get('/metrics', function () {
 
     return response()->json([
+        'users_total' => User::count(),
+        'projects_total' => Project::count(),
+        'tasks_total' => Task::count(),
+        'comments_total' => Comment::count(),
+        'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
         'application' => [
             'name' => config('app.name'),
             'environment' => config('app.env'),
